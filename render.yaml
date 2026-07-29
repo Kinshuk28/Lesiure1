@@ -1,0 +1,25 @@
+# Deployment config for Render (render.com).
+#
+# Render runs the Node server from this repo — which GitHub Pages cannot do,
+# since Pages serves static files only and this app needs a server to keep the
+# API key off the browser.
+#
+# Chosen over serverless hosts because a research run streams for one to three
+# minutes; most serverless free tiers cut a request off well before that.
+services:
+  - type: web
+    name: stock-research-summarizer
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      # sync:false means "prompt me for this in the dashboard" — the key is
+      # never committed to the repo.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RESEARCH_EFFORT
+        value: high
+      - key: MAX_SEARCHES
+        value: "14"

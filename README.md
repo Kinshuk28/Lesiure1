@@ -18,6 +18,33 @@ npm start                 # http://localhost:3000
 
 Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
 
+## Deploying
+
+**GitHub Pages will not work.** Pages serves static files and has no Node.js
+runtime, so `server/index.js` never runs. Making it static would mean shipping the
+API key in browser JavaScript, where anyone could read it and spend your credit.
+The key has to stay server-side.
+
+Use a host that runs the Node app from this repo. `render.yaml` configures
+[Render](https://render.com) — free tier, deploys on every push to `main`:
+
+1. Sign in to Render with GitHub.
+2. **New → Blueprint**, pick this repo. Render reads `render.yaml`.
+3. When prompted for `ANTHROPIC_API_KEY`, paste your key. It is stored by Render,
+   never committed here.
+4. Deploy. You get a public `*.onrender.com` URL.
+
+Render's free tier sleeps after ~15 minutes idle, so the first request after a
+quiet spell takes an extra ~50 seconds to wake up.
+
+Serverless hosts (Vercel/Netlify functions) are a poor fit as-is: a research run
+streams for one to three minutes, and their free tiers cut requests off well
+before that.
+
+> ⚠️ **Anyone with the URL can spend your API credit.** There is no auth or rate
+> limiting in this build — see *Before you put this in front of real users* below.
+> Add protection before sharing the link.
+
 ## How it works
 
 ```
