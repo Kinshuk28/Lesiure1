@@ -1,3 +1,7 @@
+// Must be first: populates process.env from .env before any module below
+// reads it. ES module imports evaluate in declaration order.
+import './env.js';
+
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

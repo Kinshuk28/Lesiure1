@@ -12,10 +12,17 @@ import { buildSystemPrompt, buildUserPrompt, DISCLAIMER } from './prompt.js';
  * without re-checking that limitation.
  */
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-
-const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-const client = new GoogleGenAI(apiKey ? { apiKey } : {});
+// Built on first use rather than at import, so the client is never constructed
+// from an environment that .env hasn't been merged into yet.
+let client = null;
+function getClient() {
+  if (!client) {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!apiKey) throw new Error('GEMINI_API_KEY is not set.');
+    client = new GoogleGenAI({ apiKey });
+  }
+  return client;
+}
 
 /**
  * Gemini's schema dialect is stricter than full JSON Schema and has
@@ -39,17 +46,13 @@ function toGeminiSchema(node) {
 const GEMINI_SCHEMA = toGeminiSchema(REPORT_SCHEMA);
 
 export async function researchStock({ query, horizon, risk, onEvent }) {
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not set.');
-  }
-
   const today = new Date().toISOString().slice(0, 10);
   let searchCount = 0;
   let text = '';
   let finalInteraction = null;
 
-  const stream = await client.interactions.create({
-    model: MODEL,
+  const stream = await getClient().interactions.create({
+    model: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     system_instruction: buildSystemPrompt({ today }),
     input: buildUserPrompt({ query, horizon, risk }),
     tools: [{ type: 'google_search' }],

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Live stock research summaries with sourced claims and scenario ranges, powered by the Claude API with server-side web search.",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "scripts": {
     "start": "node server/index.js",

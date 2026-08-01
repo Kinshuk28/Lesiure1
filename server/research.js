@@ -11,15 +11,13 @@
  * so explicitly.
  */
 
-const explicit = (process.env.PROVIDER || '').toLowerCase();
-
-const hasGemini = Boolean(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
-const hasAnthropic = Boolean(process.env.ANTHROPIC_API_KEY);
-
+// Read at call time, not module scope: reading process.env when this module is
+// first imported would capture the environment before .env has been loaded.
 export function selectedProvider() {
+  const explicit = (process.env.PROVIDER || '').trim().toLowerCase();
   if (explicit === 'gemini' || explicit === 'anthropic') return explicit;
-  if (hasGemini) return 'gemini';
-  if (hasAnthropic) return 'anthropic';
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return 'gemini';
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
   return null;
 }
 
