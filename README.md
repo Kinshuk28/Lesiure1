@@ -5,18 +5,43 @@ decision-support summary — snapshot, recent developments, bull and bear cases,
 analyst views, red flags, a Favorable / Neutral-Watch / Unfavorable verdict, and
 **scenario percentage ranges** for potential gain and loss.
 
-Research runs server-side through the Claude API's web search tool. There is no
-scraper to maintain and no market-data vendor to pay.
+Research runs server-side through a model with built-in web search — Google Gemini
+on the free tier, or Anthropic's Claude if you have credit. There is no scraper to
+maintain and no market-data vendor to pay.
 
 ## Run it
 
 ```bash
 npm install
-cp .env.example .env      # add your ANTHROPIC_API_KEY
+cp .env.example .env      # add your GEMINI_API_KEY
 npm start                 # http://localhost:3000
 ```
 
-Get an API key at [console.anthropic.com](https://console.anthropic.com/settings/keys).
+**Free option (default): Google Gemini.** Get a key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) — sign in with
+Google, "Create API key", no card required. Put it in `.env` as `GEMINI_API_KEY`.
+
+**Paid option: Anthropic.** Set `ANTHROPIC_API_KEY` instead. If both keys are
+present Gemini wins; set `PROVIDER=anthropic` to override.
+
+### Why the provider matters
+
+Both backends share `prompt.js` and `schema.js` and enforce the same invariants,
+so the methodology is identical — only the transport differs.
+
+What is **not** negotiable is live web search. Every rule in the prompt (date every
+claim, cite every source, report gaps rather than filling them) exists to stop the
+model inventing plausible stock facts. Gemini qualifies because Google Search
+grounding is built in; a free model without search would answer from stale training
+data and fabricate its sources, which for a tool people may act on financially is
+worse than not shipping.
+
+Gemini specifics: the request combines Search grounding with structured JSON output
+in one call — a **Gemini 3 series** capability. Older Gemini models reject that
+combination with *"controlled generation is not supported with google_search tool"*,
+so don't lower `GEMINI_MODEL` below `gemini-3.6-flash` without re-checking. The free
+tier has daily request caps ([current limits](https://aistudio.google.com/rate-limit));
+a 429 in the UI means you've hit them, not that the app broke.
 
 ## Deploying
 
@@ -30,7 +55,7 @@ Use a host that runs the Node app from this repo. `render.yaml` configures
 
 1. Sign in to Render with GitHub.
 2. **New → Blueprint**, pick this repo. Render reads `render.yaml`.
-3. When prompted for `ANTHROPIC_API_KEY`, paste your key. It is stored by Render,
+3. When prompted for `GEMINI_API_KEY`, paste your key. It is stored by Render,
    never committed here.
 4. Deploy. You get a public `*.onrender.com` URL.
 
@@ -41,7 +66,7 @@ Serverless hosts (Vercel/Netlify functions) are a poor fit as-is: a research run
 streams for one to three minutes, and their free tiers cut requests off well
 before that.
 
-> ⚠️ **Anyone with the URL can spend your API credit.** There is no auth or rate
+> ⚠️ **Anyone with the URL consumes your API quota** (or credit, on Anthropic). There is no auth or rate
 > limiting in this build — see *Before you put this in front of real users* below.
 > Add protection before sharing the link.
 
@@ -51,13 +76,21 @@ before that.
 browser  ──GET /api/research (SSE)──▶  Express
                                           │
                                           ▼
-                            Claude API (claude-opus-5)
-                            ├─ server-side web search      → live sources
-                            ├─ adaptive thinking            → reasoning between searches
-                            └─ output_config.format         → JSON matching schema.js
+                                    research.js
+                          picks backend by which key is set
+                                          │
+                    ┌─────────────────────┴─────────────────────┐
+                    ▼                                           ▼
+        Gemini (gemini-3.6-flash)                Claude (claude-opus-5)
+        ├─ google_search grounding               ├─ web_search tool
+        └─ response_format JSON schema           └─ output_config.format
+                    └─────────────────────┬─────────────────────┘
                                           │
        ◀──search progress, then result────┘
 ```
+
+Both paths return the same JSON shape from `schema.js`, so the frontend is
+provider-agnostic.
 
 One request per report. Search queries stream back as they run, so the page shows
 what's happening during a run that typically takes one to three minutes rather
@@ -67,7 +100,9 @@ than parking the user on a spinner.
 |---|---|
 | `server/prompt.js` | The analyst system prompt — sourcing discipline, red-flag checklist, scenario rules |
 | `server/schema.js` | JSON Schema passed as `output_config.format`, which constrains the model's reply |
-| `server/research.js` | The API call: streaming, search-progress events, `pause_turn` resume |
+| `server/research.js` | Picks the backend; both expose the same interface |
+| `server/research-gemini.js` | Gemini backend — Search grounding + JSON output in one call |
+| `server/research-anthropic.js` | Anthropic backend — web search tool, `pause_turn` resume |
 | `server/index.js` | Express + Server-Sent Events |
 | `public/` | Single-page frontend, no build step |
 
@@ -123,10 +158,13 @@ These are enforced, not just requested:
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Required; the server refuses to start without it |
+| `GEMINI_API_KEY` | — | Free tier; the server needs this **or** `ANTHROPIC_API_KEY` |
+| `ANTHROPIC_API_KEY` | — | Paid alternative |
+| `PROVIDER` | auto | `gemini` or `anthropic`; overrides auto-detection |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Must stay on Gemini 3 series (see above) |
 | `PORT` | `3000` | |
-| `RESEARCH_EFFORT` | `high` | `low` … `max`. `xhigh` digs harder on thin-coverage small caps; `medium` is cheaper on large, well-covered names |
-| `MAX_SEARCHES` | `14` | Raise for small caps that need more digging |
+| `RESEARCH_EFFORT` | `high` | Anthropic only. `low` … `max`; `xhigh` digs harder on thin-coverage small caps |
+| `MAX_SEARCHES` | `14` | Anthropic only. Raise for small caps that need more digging |
 
 Cost scales with searches and reasoning depth, so `RESEARCH_EFFORT` and
 `MAX_SEARCHES` are the two dials worth tuning for your traffic.

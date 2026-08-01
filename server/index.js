@@ -1,17 +1,22 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { researchStock } from './research.js';
+import { researchStock, selectedProvider, providerKeyName } from './research.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('ANTHROPIC_API_KEY is not set. Copy .env.example to .env and add your key.');
+const PROVIDER = selectedProvider();
+if (!PROVIDER) {
+  console.error(
+    'No API key found. Copy .env.example to .env and set GEMINI_API_KEY (free tier:\n' +
+      'https://aistudio.google.com/apikey) or ANTHROPIC_API_KEY.',
+  );
   process.exit(1);
 }
+console.log(`Research provider: ${PROVIDER}`);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
@@ -24,17 +29,29 @@ const VALID_RISKS = new Set(['conservative', 'moderate', 'aggressive', 'unspecif
  * log, noise in the browser.
  */
 function toUserMessage(err) {
-  switch (err?.status) {
+  const key = providerKeyName(PROVIDER);
+  // Gemini surfaces status on .status; some SDK errors carry it on .code.
+  const status = err?.status ?? err?.code;
+
+  // Gemini returns 400 INVALID_ARGUMENT for a bad key, where Anthropic returns
+  // 401 — so match on the reason before falling through to the generic 400.
+  const body = typeof err?.body === 'string' ? err.body : '';
+  if (/API_KEY_INVALID|API key not valid/i.test(body)) {
+    return `The API key was rejected. Check ${key} in your .env.`;
+  }
+
+  switch (status) {
     case 401:
-      return 'The API key was rejected. Check ANTHROPIC_API_KEY in your .env.';
     case 403:
-      return 'This API key is not permitted to use the requested model.';
+      return `The API key was rejected. Check ${key} in your .env.`;
     case 429:
-      return 'Rate limited by the API. Wait a moment and try again.';
+      return PROVIDER === 'gemini'
+        ? 'Free-tier rate limit hit. Wait a minute, or check your quota at aistudio.google.com/rate-limit.'
+        : 'Rate limited by the API. Wait a moment and try again.';
     case 400:
       return 'The API rejected the request. Check the server log for details.';
     default:
-      if (err?.status >= 500) return 'The API is temporarily unavailable. Try again shortly.';
+      if (status >= 500) return 'The API is temporarily unavailable. Try again shortly.';
       return err?.message || 'Research failed.';
   }
 }
